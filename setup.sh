@@ -52,15 +52,19 @@ append_once() {
 # Returns 0 on first success, 1 if all candidates fail.
 npm_install_try() {
     local label="$1"; shift
+    local err_file
+    err_file="$(mktemp)"
     for pkg in "$@"; do
         log_info "  Trying npm install -g ${pkg} ..."
-        if npm install -g "$pkg" 2>/tmp/npm_install_err; then
+        if npm install -g "$pkg" 2>"$err_file"; then
+            rm -f "$err_file"
             log_success "${label} installed via ${pkg}."
             return 0
         else
-            log_warn "  ${pkg} failed: $(head -1 /tmp/npm_install_err)"
+            log_warn "  ${pkg} failed: $(head -1 "$err_file")"
         fi
     done
+    rm -f "$err_file"
     return 1
 }
 
@@ -107,7 +111,9 @@ install_zsh_p10k() {
     zsh_path="$(command -v zsh)"
     if [[ "$SHELL" != "$zsh_path" ]]; then
         log_info "Changing default shell to zsh (requires sudo)..."
-        sudo chsh -s "$zsh_path" "$USER"
+        if ! sudo chsh -s "$zsh_path" "$USER"; then
+            log_warn "Could not change default shell. Run manually: sudo chsh -s $zsh_path $USER"
+        fi
     fi
 
     # Install MesloLGS NF fonts (required for Powerlevel10k glyphs)
@@ -170,10 +176,13 @@ install_go() {
     log_section "Go"
 
     local go_version
-    go_version="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)"
+    go_version="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)" || go_version=""
+    if [[ -z "$go_version" ]]; then
+        log_warn "Could not fetch latest Go version – skipping version check."
+    fi
     local tarball="${go_version}.linux-amd64.tar.gz"
 
-    if command -v go &>/dev/null && [[ "$(go version | awk '{print $3}')" == "$go_version" ]]; then
+    if [[ -n "$go_version" ]] && command -v go &>/dev/null && [[ "$(go version | awk '{print $3}')" == "$go_version" ]]; then
         log_success "Go $go_version already installed – skipping."
     else
         log_info "Downloading $tarball..."
@@ -220,18 +229,27 @@ install_golangci_lint() {
 install_nodejs() {
     log_section "Node.js (via nvm)"
 
-    if command -v node &>/dev/null; then
+    if [[ -s "$HOME/.nvm/nvm.sh" ]] && command -v node &>/dev/null; then
         log_success "Node.js $(node --version) already installed – skipping."
         return
     fi
 
-    log_info "Installing nvm..."
     local nvm_version="v0.39.7"
-    curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${nvm_version}/install.sh" | bash
+    if [[ ! -s "$HOME/.nvm/nvm.sh" ]]; then
+        log_info "Installing nvm..."
+        curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${nvm_version}/install.sh" | bash
+    else
+        log_success "nvm already installed – skipping."
+    fi
 
     export NVM_DIR="$HOME/.nvm"
     # shellcheck source=/dev/null
     [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
+
+    if ! command -v nvm &>/dev/null; then
+        log_error "nvm installation failed. Install manually: https://github.com/nvm-sh/nvm"
+        exit 1
+    fi
 
     log_info "Installing Node.js LTS..."
     nvm install --lts
@@ -262,6 +280,10 @@ install_claude_code() {
 
     log_info "Installing @anthropic-ai/claude-code..."
     npm install -g @anthropic-ai/claude-code
+    if ! command -v claude &>/dev/null; then
+        log_error "Claude Code installation failed – 'claude' not found in PATH."
+        exit 1
+    fi
     log_success "Claude Code installed: $(claude --version 2>&1 | head -1)"
 }
 
@@ -342,42 +364,25 @@ EOF
 }
 
 # ==============================================================================
-# 7. Claude Plugins: superpowers & claude-hud
+# 7. Claude Plugins: superpowers, claude-hud & claude-code-setup
 # ==============================================================================
 install_claude_plugins() {
-    log_section "Claude Plugins (superpowers, claude-hud)"
-    _ensure_nvm
+    log_section "Claude Plugins (superpowers, claude-hud, claude-code-setup)"
 
-    # superpowers
-    log_info "Installing claude-superpowers..."
-    if npm_any_installed "@claudepkg/superpowers" "superpowers"; then
-        log_success "superpowers already installed."
-    else
-        npm_install_try "superpowers" "@claudepkg/superpowers" "superpowers" \
-            || {
-                log_warn "superpowers not found on npm registry."
-                log_warn "You can install it later with: claude extension install superpowers"
-            }
+    if ! command -v claude &>/dev/null; then
+        log_warn "Claude Code not found – skipping plugin installation."
+        log_warn "Run after installing Claude Code: claude extension install superpowers && claude extension install claude-hud && claude extension install claude-code-setup"
+        return
     fi
 
-    # claude-hud
-    log_info "Installing claude-hud..."
-    if npm_any_installed "@claudepkg/claude-hud" "claude-hud"; then
-        log_success "claude-hud already installed."
-    else
-        npm_install_try "claude-hud" "@claudepkg/claude-hud" "claude-hud" \
-            || {
-                log_warn "claude-hud not found on npm registry."
-                log_warn "You can install it later with: claude extension install claude-hud"
-            }
-    fi
+    log_info "Installing superpowers via claude extension..."
+    claude extension install superpowers || log_warn "superpowers install failed. Retry: claude extension install superpowers"
 
-    # Register extensions with Claude Code if the binary is available
-    if command -v claude &>/dev/null; then
-        log_info "Registering extensions with Claude Code..."
-        claude extension install superpowers 2>/dev/null || true
-        claude extension install claude-hud   2>/dev/null || true
-    fi
+    log_info "Installing claude-hud via claude extension..."
+    claude extension install claude-hud || log_warn "claude-hud install failed. Retry: claude extension install claude-hud"
+
+    log_info "Installing claude-code-setup via claude extension..."
+    claude extension install claude-code-setup || log_warn "claude-code-setup install failed. Retry: claude extension install claude-code-setup"
 
     log_success "Claude plugin setup complete."
 }
@@ -390,10 +395,10 @@ install_skill_caveman() {
     _ensure_nvm
 
     log_info "Installing skill-caveman..."
-    if npm_any_installed "skill-caveman" "@caveman/skill"; then
+    if npm_any_installed "skill-caveman"; then
         log_success "skill-caveman already installed."
     else
-        npm_install_try "skill-caveman" "skill-caveman" "@caveman/skill" \
+        npm_install_try "skill-caveman" "skill-caveman" \
             || {
                 log_warn "skill-caveman not found on npm registry."
                 log_warn "You can install it later with: claude skill install caveman"
