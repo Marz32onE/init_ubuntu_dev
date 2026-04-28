@@ -22,15 +22,18 @@ Re-running is safe — every step guards with `command -v` or file-existence che
 | Function | What it does |
 |---|---|
 | `install_prerequisites` | apt update + base packages |
-| `install_zsh_p10k` | zsh, zinit, Powerlevel10k, MesloLGS fonts, `~/.zshrc` config |
-| `install_go` / `install_golangci_lint` | Latest Go tarball → `/usr/local/go`; lint via official script |
-| `install_nodejs` | nvm → Node LTS |
-| `install_claude_code` | `npm install -g @anthropic-ai/claude-code` |
+| `install_zsh_p10k` | zsh, direct-clone Powerlevel10k + plugins, MesloLGS fonts, `~/.zshrc` config (p10k instant prompt prepended) |
+| `install_jq` | Latest jq binary → `/usr/local/bin` (GitHub release; fallback to apt) |
+| `install_go` / `install_golangci_lint` | Latest Go tarball → `/usr/local/go`; symlinks in `/usr/local/bin`; golangci-lint → `/usr/local/bin` |
+| `install_nodejs` | nvm → Node LTS + TypeScript (`tsc`) global |
+| `install_claude_code` | Native installer (`claude.ai/install.sh`) → `~/.local/bin` |
 | `install_cursor` | Official `cursor.com/install` script |
-| `install_rtk` | rtk-cli npm install + config files for Claude Code and Cursor |
-| `install_claude_plugins` | superpowers + claude-hud npm install + `claude extension install` |
+| `install_rtk` | RTK (Rust Token Killer) installer → `~/.local/bin` |
+| `install_claude_plugins` | superpowers + claude-hud + claude-code-setup via `claude extension install` |
 | `install_skill_caveman` | skill-caveman npm install + `claude skill install caveman` |
 | `install_openspec` | openspec npm install |
+| `install_git_config` | Sets git global `user.email` / `user.name` |
+| `install_repo` | Clones `otel-traces-test` → `~/Documents/otel-traces-test` |
 
 ## Key helpers
 
@@ -45,4 +48,4 @@ To add a new tool: write an `install_<tool>()` function following the pattern ab
 
 ## Shell rc patching
 
-Go env vars and zinit config are written to both `~/.bashrc` and `~/.zshrc` via `append_once`. The marker string is the first line of the block — changing it will cause duplicate entries on re-run.
+Go env vars are written to both `~/.bashrc` and `~/.zshrc` via `append_once`. Zsh plugin sourcing uses `env-init:` prefixed markers. The marker string is the first line of the block — changing it will cause duplicate entries on re-run.

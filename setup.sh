@@ -3,14 +3,17 @@
 # Ubuntu Dev Environment Setup Script
 # ==============================================================================
 # Installs and configures:
-#   1. Zsh + Powerlevel10k (via zinit – no oh-my-zsh)
-#   2. Go + golangci-lint
-#   3. Claude Code (Anthropic CLI)
-#   4. Cursor editor
-#   5. RTK CLI + config for Claude Code and Cursor
-#   6. Claude plugins: superpowers, claude-hud
-#   7. Skill Caveman (Claude Code + Cursor)
-#   8. OpenSpec CLI
+#   1.  Zsh + Powerlevel10k (direct clone – no zinit/oh-my-zsh)
+#   2.  jq
+#   3.  Go + golangci-lint
+#   4.  Node.js (nvm) + TypeScript
+#   5.  Claude Code (native installer)
+#   6.  Cursor editor
+#   7.  RTK (Rust Token Killer)
+#   8.  Claude plugins: superpowers, claude-hud, claude-code-setup
+#   9.  Skill Caveman
+#   10. OpenSpec CLI
+#   11. Git global identity + otel-traces-test repo clone
 # ==============================================================================
 set -euo pipefail
 
@@ -95,10 +98,10 @@ install_prerequisites() {
 }
 
 # ==============================================================================
-# 1. Zsh + Powerlevel10k (zinit, no oh-my-zsh)
+# 1. Zsh + Powerlevel10k (direct clone, no zinit/oh-my-zsh)
 # ==============================================================================
 install_zsh_p10k() {
-    log_section "Zsh + Powerlevel10k (via zinit)"
+    log_section "Zsh + Powerlevel10k"
 
     # Install zsh
     if ! command -v zsh &>/dev/null; then
@@ -134,53 +137,112 @@ install_zsh_p10k() {
     fc-cache -f "$font_dir" &>/dev/null
     log_success "MesloLGS NF fonts installed."
 
-    # Install zinit
-    local zinit_home="${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git"
-    if [[ ! -d "$zinit_home" ]]; then
-        log_info "Installing zinit plugin manager..."
-        mkdir -p "$(dirname "$zinit_home")"
-        git clone --depth=1 https://github.com/zdharma-continuum/zinit.git "$zinit_home"
+    # Clone plugins directly
+    local plugins_dir="$HOME/.config/zsh/plugins"
+    mkdir -p "$plugins_dir"
+
+    if [[ ! -d "$plugins_dir/powerlevel10k" ]]; then
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$plugins_dir/powerlevel10k"
     fi
-    log_success "zinit ready at $zinit_home"
+    if [[ ! -d "$plugins_dir/zsh-autosuggestions" ]]; then
+        git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$plugins_dir/zsh-autosuggestions"
+    fi
+    if [[ ! -d "$plugins_dir/zsh-syntax-highlighting" ]]; then
+        git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting "$plugins_dir/zsh-syntax-highlighting"
+    fi
+    log_success "Zsh plugins cloned to $plugins_dir"
 
     # Configure ~/.zshrc
-    log_info "Configuring ~/.zshrc..."
     touch ~/.zshrc
 
-    append_once ~/.zshrc "# zinit init" \
-'# zinit init
-ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
-source "${ZINIT_HOME}/zinit.zsh"
-autoload -Uz _zinit
-(( ${+_comps} )) && _comps[zinit]=_zinit
+    # Powerlevel10k instant prompt must be first — prepend to existing content
+    if ! grep -q 'p10k-instant-prompt' ~/.zshrc; then
+        local tmp
+        tmp="$(mktemp)"
+        cat > "$tmp" <<'ZSHINSTANT'
+# Enable Powerlevel10k instant prompt (quiet mode)
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
 
-# Powerlevel10k theme (no oh-my-zsh)
-zinit ice depth=1; zinit light romkatv/powerlevel10k
+ZSHINSTANT
+        cat ~/.zshrc >> "$tmp"
+        mv "$tmp" ~/.zshrc
+    fi
 
-# Useful plugins
-zinit light zsh-users/zsh-autosuggestions
-zinit light zsh-users/zsh-syntax-highlighting
-zinit light zsh-users/zsh-completions
+    # Source plugins (idempotent via marker)
+    append_once ~/.zshrc "# env-init: zsh plugins" \
+'# env-init: zsh plugins
+source "$HOME/.config/zsh/plugins/powerlevel10k/powerlevel10k.zsh-theme"
+source "$HOME/.config/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
+source "$HOME/.config/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh'
 
-# Load p10k config if present
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh'
+    # ~/.local/bin on PATH (Claude Code native installer targets this dir)
+    mkdir -p "$HOME/.local/bin"
+    append_once ~/.zshrc "# env-init: user local bin" \
+'# env-init: user local bin (Claude Code, pip --user)
+export PATH="${HOME}/.local/bin:${PATH}"'
 
     log_success "Zsh + Powerlevel10k configured."
     log_warn "Run 'p10k configure' inside a new zsh session to customise the prompt."
 }
 
 # ==============================================================================
-# 2. Go + golangci-lint
+# 2. jq
+# ==============================================================================
+install_jq() {
+    log_section "jq"
+
+    local goarch
+    case "$(uname -m)" in
+        x86_64)        goarch="amd64" ;;
+        aarch64|arm64) goarch="arm64" ;;
+        *) log_error "Unsupported architecture: $(uname -m)"; exit 1 ;;
+    esac
+
+    if command -v jq &>/dev/null; then
+        log_success "jq $(jq --version) already installed – skipping."
+        return
+    fi
+
+    local jq_asset="jq-linux-${goarch}"
+    local jq_tag
+    jq_tag="$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: setup.sh' \
+        https://api.github.com/repos/jqlang/jq/releases/latest \
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
+
+    if [[ -n "$jq_tag" ]] && curl -fsSL \
+        "https://github.com/jqlang/jq/releases/download/${jq_tag}/${jq_asset}" -o /tmp/jq.bin; then
+        sudo install -m 0755 /tmp/jq.bin /usr/local/bin/jq
+        rm -f /tmp/jq.bin
+    else
+        log_warn "jq GitHub download failed; installing distro jq"
+        sudo apt-get install -y -qq jq
+        sudo install -m 0755 "$(command -v jq)" /usr/local/bin/jq
+    fi
+    log_success "jq $(jq --version)"
+}
+
+# ==============================================================================
+# 3. Go + golangci-lint
 # ==============================================================================
 install_go() {
     log_section "Go"
 
+    local goarch
+    case "$(uname -m)" in
+        x86_64)        goarch="amd64" ;;
+        aarch64|arm64) goarch="arm64" ;;
+        *) log_error "Unsupported architecture: $(uname -m)"; exit 1 ;;
+    esac
+
     local go_version
-    go_version="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)" || go_version=""
+    go_version="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1 | tr -d '\r\n')" || go_version=""
     if [[ -z "$go_version" ]]; then
         log_warn "Could not fetch latest Go version – skipping version check."
     fi
-    local tarball="${go_version}.linux-amd64.tar.gz"
+    local tarball="${go_version}.linux-${goarch}.tar.gz"
 
     if [[ -n "$go_version" ]] && command -v go &>/dev/null && [[ "$(go version | awk '{print $3}')" == "$go_version" ]]; then
         log_success "Go $go_version already installed – skipping."
@@ -192,6 +254,8 @@ install_go() {
         sudo rm -rf /usr/local/go
         sudo tar -C /usr/local -xzf "${tmp}/${tarball}"
         rm -rf "$tmp"
+        sudo ln -sf /usr/local/go/bin/go    /usr/local/bin/go
+        sudo ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
     fi
 
     export GOROOT=/usr/local/go
@@ -219,20 +283,15 @@ install_golangci_lint() {
 
     log_info "Installing golangci-lint..."
     curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-        | sh -s -- -b "$(go env GOPATH)/bin"
+        | sudo sh -s -- -b /usr/local/bin
     log_success "golangci-lint $(golangci-lint --version 2>&1 | head -1)"
 }
 
 # ==============================================================================
-# 3. Node.js (prerequisite for Claude Code, RTK, plugins, OpenSpec)
+# 4. Node.js (prerequisite for Claude Code, RTK, plugins, OpenSpec) + TypeScript
 # ==============================================================================
 install_nodejs() {
-    log_section "Node.js (via nvm)"
-
-    if [[ -s "$HOME/.nvm/nvm.sh" ]] && command -v node &>/dev/null; then
-        log_success "Node.js $(node --version) already installed – skipping."
-        return
-    fi
+    log_section "Node.js (via nvm) + TypeScript"
 
     local nvm_version="v0.39.7"
     if [[ ! -s "$HOME/.nvm/nvm.sh" ]]; then
@@ -251,12 +310,19 @@ install_nodejs() {
         exit 1
     fi
 
-    log_info "Installing Node.js LTS..."
-    nvm install --lts
-    nvm use --lts
-    nvm alias default "lts/*"
-
+    if ! command -v node &>/dev/null; then
+        log_info "Installing Node.js LTS..."
+        nvm install --lts
+        nvm use --lts
+        nvm alias default "lts/*"
+    fi
     log_success "Node.js $(node --version) / npm $(npm --version)"
+
+    if ! command -v tsc &>/dev/null; then
+        log_info "Installing TypeScript (tsc)..."
+        npm install -g typescript || log_warn "TypeScript install failed. Retry: npm install -g typescript"
+    fi
+    log_success "TypeScript $(tsc --version 2>/dev/null)"
 }
 
 # Source nvm in current shell if available but not yet loaded
@@ -267,28 +333,31 @@ _ensure_nvm() {
 }
 
 # ==============================================================================
-# 4. Claude Code
+# 5. Claude Code
 # ==============================================================================
 install_claude_code() {
     log_section "Claude Code"
-    _ensure_nvm
 
     if command -v claude &>/dev/null; then
         log_success "Claude Code $(claude --version 2>&1 | head -1) already installed – skipping."
         return
     fi
 
-    log_info "Installing @anthropic-ai/claude-code..."
-    npm install -g @anthropic-ai/claude-code
-    if ! command -v claude &>/dev/null; then
-        log_error "Claude Code installation failed – 'claude' not found in PATH."
-        exit 1
+    log_info "Installing Claude Code via native installer..."
+    if ! curl -fsSL https://claude.ai/install.sh | bash; then
+        log_warn "Claude Code install failed. Retry: curl -fsSL https://claude.ai/install.sh | bash"
+        return
     fi
-    log_success "Claude Code installed: $(claude --version 2>&1 | head -1)"
+    export PATH="$HOME/.local/bin:$PATH"
+    if command -v claude &>/dev/null; then
+        log_success "Claude Code installed: $(claude --version 2>&1 | head -1)"
+    else
+        log_warn "Claude Code installed but 'claude' not yet on PATH – open a new shell."
+    fi
 }
 
 # ==============================================================================
-# 5. Cursor
+# 6. Cursor
 # ==============================================================================
 install_cursor() {
     log_section "Cursor"
@@ -312,106 +381,68 @@ install_cursor() {
 }
 
 # ==============================================================================
-# 6. RTK CLI + setup for Claude Code and Cursor
+# 7. RTK (Rust Token Killer)
 # ==============================================================================
 install_rtk() {
-    log_section "RTK CLI"
-    _ensure_nvm
+    log_section "RTK (Rust Token Killer)"
 
-    log_info "Installing rtk (Redux Toolkit CLI / dev tooling)..."
-    # rtk-cli provides code-generation utilities used alongside Claude Code / Cursor
-    if npm_any_installed "rtk-cli" "@rtk-incubator/rtk-query-codegen-openapi"; then
-        log_success "rtk-cli already installed – skipping."
+    if command -v rtk &>/dev/null; then
+        log_success "RTK $(rtk --version 2>/dev/null) already installed – skipping."
+        return
+    fi
+
+    log_info "Installing RTK (Rust Token Killer) → ~/.local/bin..."
+    if curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; then
+        export PATH="$HOME/.local/bin:$PATH"
+        log_success "RTK installed: $(command -v rtk &>/dev/null && rtk --version 2>/dev/null || echo 'available after new shell')"
     else
-        npm_install_try "RTK CLI" \
-            "rtk-cli" \
-            "@rtk-incubator/rtk-query-codegen-openapi" \
-            || log_warn "RTK CLI not found on npm – please install manually."
+        log_warn "RTK install failed. Retry: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
     fi
-
-    # ── Claude Code integration ──────────────────────────────────────────────
-    local claude_config_dir="$HOME/.config/claude"
-    mkdir -p "$claude_config_dir"
-    local claude_cfg="$claude_config_dir/rtk.json"
-    if [[ ! -f "$claude_cfg" ]]; then
-        cat > "$claude_cfg" <<'EOF'
-{
-  "tool": "rtk-cli",
-  "integration": "claude-code",
-  "autoImport": true,
-  "codegenOnSave": false
-}
-EOF
-        log_success "RTK config written to $claude_cfg"
-    fi
-
-    # ── Cursor integration (workspace settings template) ────────────────────
-    local cursor_settings_dir="$HOME/.cursor/User"
-    mkdir -p "$cursor_settings_dir"
-    local cursor_cfg="$cursor_settings_dir/rtk-settings.json"
-    if [[ ! -f "$cursor_cfg" ]]; then
-        cat > "$cursor_cfg" <<'EOF'
-{
-  "rtk.enable": true,
-  "rtk.autoCodegen": false,
-  "rtk.endpoint": ""
-}
-EOF
-        log_success "RTK Cursor config written to $cursor_cfg"
-    fi
-
-    log_success "RTK CLI setup complete."
 }
 
 # ==============================================================================
-# 7. Claude Plugins: superpowers, claude-hud & claude-code-setup
+# 8. Claude Plugins: superpowers, claude-hud & claude-code-setup
 # ==============================================================================
 install_claude_plugins() {
     log_section "Claude Plugins (superpowers, claude-hud, claude-code-setup)"
 
     if ! command -v claude &>/dev/null; then
         log_warn "Claude Code not found – skipping plugin installation."
-        log_warn "Run after installing Claude Code: claude extension install superpowers && claude extension install claude-hud && claude extension install claude-code-setup"
         return
     fi
 
-    log_info "Installing superpowers via claude extension..."
-    claude extension install superpowers || log_warn "superpowers install failed. Retry: claude extension install superpowers"
+    log_info "Installing superpowers..."
+    claude plugin install superpowers@claude-plugins-official \
+        || log_warn "superpowers install failed. Retry: claude plugin install superpowers@claude-plugins-official"
 
-    log_info "Installing claude-hud via claude extension..."
-    claude extension install claude-hud || log_warn "claude-hud install failed. Retry: claude extension install claude-hud"
+    log_info "Installing claude-code-setup..."
+    claude plugin install claude-code-setup@claude-plugins-official \
+        || log_warn "claude-code-setup install failed. Retry: claude plugin install claude-code-setup@claude-plugins-official"
 
-    log_info "Installing claude-code-setup via claude extension..."
-    claude extension install claude-code-setup || log_warn "claude-code-setup install failed. Retry: claude extension install claude-code-setup"
+    log_info "Installing claude-hud..."
+    claude plugin marketplace add jarrodwatts/claude-hud \
+        && claude plugin install claude-hud \
+        || log_warn "claude-hud install failed. Retry: claude plugin marketplace add jarrodwatts/claude-hud && claude plugin install claude-hud"
 
     log_success "Claude plugin setup complete."
 }
 
 # ==============================================================================
-# 8. Skill Caveman (Claude Code + Cursor)
+# 9. Skill Caveman (Claude Code + Cursor)
 # ==============================================================================
 install_skill_caveman() {
     log_section "Skill Caveman"
-    _ensure_nvm
 
-    log_info "Installing skill-caveman..."
-    if npm_any_installed "skill-caveman"; then
-        log_success "skill-caveman already installed."
-    else
-        npm_install_try "skill-caveman" "skill-caveman" \
-            || {
-                log_warn "skill-caveman not found on npm registry."
-                log_warn "You can install it later with: claude skill install caveman"
-            }
+    if ! command -v claude &>/dev/null; then
+        log_warn "Claude Code not found – skipping caveman install."
+        return
     fi
 
-    # Register skill with Claude Code
-    if command -v claude &>/dev/null; then
-        log_info "Registering caveman skill with Claude Code..."
-        claude skill install caveman 2>/dev/null || true
-    fi
+    log_info "Installing caveman plugin..."
+    claude plugin marketplace add JuliusBrussee/caveman \
+        && claude plugin install caveman@caveman \
+        || log_warn "caveman install failed. Retry: claude plugin marketplace add JuliusBrussee/caveman && claude plugin install caveman@caveman"
 
-    # Cursor: write caveman settings template
     local cursor_settings_dir="$HOME/.cursor/User"
     mkdir -p "$cursor_settings_dir"
     local caveman_cfg="$cursor_settings_dir/caveman-settings.json"
@@ -429,7 +460,7 @@ EOF
 }
 
 # ==============================================================================
-# 9. OpenSpec
+# 10. OpenSpec
 # ==============================================================================
 install_openspec() {
     log_section "OpenSpec"
@@ -450,6 +481,37 @@ install_openspec() {
 }
 
 # ==============================================================================
+# 11. Git global identity
+# ==============================================================================
+install_git_config() {
+    log_section "Git global config"
+    git config --global user.email "death0032@gmail.com"
+    git config --global user.name "marz32one"
+    log_success "Git identity: marz32one <death0032@gmail.com>"
+}
+
+# ==============================================================================
+# 12. Clone otel-traces-test
+# ==============================================================================
+install_repo() {
+    log_section "otel-traces-test repo"
+
+    local repo_dir="$HOME/Documents/otel-traces-test"
+    mkdir -p "$HOME/Documents"
+
+    if [[ -d "$repo_dir/.git" ]]; then
+        log_success "Repo already exists at $repo_dir – skipping."
+        return
+    fi
+
+    git clone https://github.com/Marz32onE/otel-traces-test.git "$repo_dir"
+    if ! git -C "$repo_dir" submodule update --init --recursive; then
+        log_warn "Submodules failed. Run: git -C $repo_dir submodule update --init --recursive"
+    fi
+    log_success "otel-traces-test cloned to $repo_dir"
+}
+
+# ==============================================================================
 # Main
 # ==============================================================================
 main() {
@@ -461,6 +523,7 @@ main() {
 
     install_prerequisites
     install_zsh_p10k
+    install_jq
     install_go
     install_golangci_lint
     install_nodejs
@@ -470,6 +533,8 @@ main() {
     install_claude_plugins
     install_skill_caveman
     install_openspec
+    install_git_config
+    install_repo
 
     echo -e "\n${BOLD}${GREEN}"
     echo "╔══════════════════════════════════════════════════════════╗"
