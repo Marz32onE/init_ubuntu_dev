@@ -1,19 +1,20 @@
 # init_ubuntu_dev
 
-A single-script Ubuntu dev environment bootstrap that installs and configures everything you need.
+Single-script Ubuntu dev environment bootstrap. Installs and configures a full toolchain on Ubuntu 20.04+.
 
 ## What gets installed
 
 | # | Tool | Notes |
 |---|------|-------|
-| 1 | **Zsh + Powerlevel10k** | via [zinit](https://github.com/zdharma-continuum/zinit) – no oh-my-zsh |
-| 2 | **Go + golangci-lint** | latest stable Go; golangci-lint via official script |
-| 3 | **Claude Code** | `@anthropic-ai/claude-code` (Anthropic CLI) |
-| 4 | **Cursor** | `curl https://cursor.com/install -fsS | bash` |
-| 5 | **RTK CLI** | Redux Toolkit CLI + config files for Claude Code & Cursor |
-| 6 | **Claude plugins** | `superpowers` and `claude-hud` extensions |
-| 7 | **Skill Caveman** | caveman skill registered for Claude Code & Cursor |
-| 8 | **OpenSpec** | OpenAPI/OpenSpec CLI |
+| 1 | **Zsh + Powerlevel10k** | Direct git clone — no Oh My Zsh, no zinit |
+| 2 | **Go + golangci-lint** | Latest stable from go.dev; golangci-lint via official script |
+| 3 | **jq** | Latest binary from GitHub releases; apt fallback |
+| 4 | **Node.js 22** | Via nodesource + TypeScript global |
+| 5 | **Cursor** | Official `.deb` installer |
+| 6 | **Claude Code** | Native installer → `~/.local/bin` |
+| 7 | **RTK** | Rust Token Killer → `~/.local/bin`; initialized for global + Cursor |
+| 8 | **Claude plugins** | claude-code-setup, superpowers, claude-hud, caveman |
+| 9 | **openspec** | Global npm install |
 
 ## Requirements
 
@@ -24,7 +25,7 @@ A single-script Ubuntu dev environment bootstrap that installs and configures ev
 ## Usage
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/init_ubuntu_dev.git
+git clone https://github.com/Marz32onE/init_ubuntu_dev.git
 cd init_ubuntu_dev
 chmod +x setup.sh
 ./setup.sh
@@ -36,23 +37,18 @@ After the script finishes:
 exec zsh          # start zsh in the current terminal
 p10k configure    # interactive Powerlevel10k prompt wizard
 claude auth       # authenticate your Anthropic account
-cursor            # launch the Cursor editor
 ```
-
-## What happens step by step
-
-1. **Prerequisites** – updates `apt` and installs `curl`, `git`, `build-essential`, etc.
-2. **Zsh + Powerlevel10k** – installs `zsh`, sets it as your default shell, downloads the MesloLGS NF fonts, installs the `zinit` plugin manager, and appends a minimal `~/.zshrc` that loads Powerlevel10k plus `zsh-autosuggestions` / `zsh-syntax-highlighting`.
-3. **Go** – downloads the latest stable tarball from `go.dev`, extracts to `/usr/local/go`, and sets `GOROOT`/`GOPATH`/`PATH` in both `~/.bashrc` and `~/.zshrc`.
-4. **golangci-lint** – installed into `$GOPATH/bin` via the official install script.
-5. **Node.js** – installed via `nvm` (LTS channel); required by Claude Code, RTK CLI, plugins and OpenSpec.
-6. **Claude Code** – `npm install -g @anthropic-ai/claude-code`.
-7. **Cursor** – official install script from `cursor.com`.
-8. **RTK CLI** – `npm install -g rtk-cli`; writes config templates to `~/.config/claude/rtk.json` and `~/.cursor/User/rtk-settings.json`.
-9. **Claude plugins** – attempts to install `superpowers` and `claude-hud` from npm and registers them via `claude extension install`.
-10. **Skill Caveman** – installs the `skill-caveman` npm package, registers it with Claude Code, and writes a Cursor settings template.
-11. **OpenSpec** – `npm install -g openspec`.
 
 ## Idempotent
 
-Every step checks whether the tool is already installed before doing anything, so re-running `setup.sh` is safe.
+Every step checks whether the tool is already installed before acting. Re-running `setup.sh` is safe.
+
+## Linux note — Claude plugin installs
+
+If `claude plugin install` fails with a cross-device error (`EXDEV: cross-device link not permitted`), run:
+
+```bash
+mkdir -p ~/.cache/tmp && TMPDIR=~/.cache/tmp claude plugin install <plugin>
+```
+
+This occurs when `/tmp` and `$HOME` are on different filesystems.

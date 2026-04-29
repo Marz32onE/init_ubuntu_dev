@@ -17,35 +17,51 @@ Re-running is safe — every step guards with `command -v` or file-existence che
 
 ## Script structure
 
-`setup.sh` is organized as discrete `install_*` functions called sequentially from `main()`:
+`setup.sh` is a flat, numbered-section bash script (no functions, no `main()`). Sections run sequentially top to bottom:
 
-| Function | What it does |
+| Section | What it does |
 |---|---|
-| `install_prerequisites` | apt update + base packages |
-| `install_zsh_p10k` | zsh, direct-clone Powerlevel10k + plugins, MesloLGS fonts, `~/.zshrc` config (p10k instant prompt prepended) |
-| `install_jq` | Latest jq binary → `/usr/local/bin` (GitHub release; fallback to apt) |
-| `install_go` / `install_golangci_lint` | Latest Go tarball → `/usr/local/go`; symlinks in `/usr/local/bin`; golangci-lint → `/usr/local/bin` |
-| `install_nodejs` | nvm → Node LTS + TypeScript (`tsc`) global |
-| `install_claude_code` | Native installer (`claude.ai/install.sh`) → `~/.local/bin` |
-| `install_cursor` | Official `cursor.com/install` script |
-| `install_rtk` | RTK (Rust Token Killer) installer → `~/.local/bin` |
-| `install_claude_plugins` | superpowers + claude-hud + claude-code-setup via `claude extension install` |
-| `install_skill_caveman` | skill-caveman npm install + `claude skill install caveman` |
-| `install_openspec` | openspec npm install |
-| `install_git_config` | Sets git global `user.email` / `user.name` |
-| `install_repo` | Clones `otel-traces-test` → `~/Documents/otel-traces-test` |
+| `# --- 1)` | apt update + base packages (zsh, git, curl, build-essential) |
+| `# --- 2)` | zsh + Powerlevel10k + autosuggestions + syntax-highlighting (direct git clone, no Oh My Zsh) |
+| `# --- 3)` | Latest Go tarball → `/usr/local/go`; symlinks in `/usr/local/bin` |
+| `# --- 4)` | Latest jq binary → `/usr/local/bin` (GitHub release; apt fallback) |
+| `# --- 5)` | Node.js 22 via nodesource + TypeScript global → `/usr/local/bin` |
+| `# --- 6)` | Cursor (official `.deb`) |
+| `# --- 7)` | Claude Code CLI via `claude.ai/install.sh` → `~/.local/bin` |
+| `# --- 8)` | Git global identity (`user.email` / `user.name`) |
+| `# --- 9)` | golangci-lint → `/usr/local/bin` |
+| `# --- 11)` | Clone `otel-traces-test` → `~/Documents/otel-traces-test` |
+| `# --- 12)` | RTK (Rust Token Killer) installer → `~/.local/bin` |
+| `# --- 12b)` | `rtk init -g` + `rtk init -g --agent cursor` |
+| `# --- 13)` | Claude Code plugins: claude-code-setup, superpowers, claude-hud, caveman |
+| `# --- 14)` | openspec global npm install |
 
-## Key helpers
+## Key patterns
 
-- `append_once <file> <marker> <content>` — appends a block to a shell rc file only if the marker string isn't already present. Used to keep `~/.bashrc` and `~/.zshrc` idempotent.
-- `npm_install_try <label> <pkg1> <pkg2> ...` — tries npm package names in order, returns 0 on first success. Used for packages with uncertain/multiple registry names.
-- `npm_any_installed <pkg1> <pkg2> ...` — checks `npm list -g` for any candidate; used as the idempotency guard before `npm_install_try`.
-- `_ensure_nvm` — sources `~/.nvm/nvm.sh` in the current shell; called at the top of any function that needs `npm`/`node`.
+- **Idempotency guard**: `command -v <tool>` or `[[ ! -d <path> ]]` before every install — re-running is safe.
+- **Shell rc patching**: `~/.zshrc` is patched with `grep -q '<marker>'` checks before appending blocks. Marker strings are the first line of each block; changing a marker causes duplicate entries on re-run.
+- **`~/.local/bin` on PATH**: Claude Code and RTK install here; the script appends `export PATH="${HOME}/.local/bin:${PATH}"` to `~/.zshrc` (marker: `env-init: user local bin`).
+- **Go PATH**: `~/go/bin` (GOPATH/bin) appended to `~/.zshrc` (marker: `env-init: go bin`).
+- **Zsh plugins**: sourced directly in `~/.zshrc` from `~/.config/zsh/plugins/` (marker: `env-init: zsh plugins`).
 
 ## Extending the script
 
-To add a new tool: write an `install_<tool>()` function following the pattern above (idempotency guard → install → log_success), then add a call to it in `main()`.
+Add a new numbered section following the pattern: idempotency guard → install command → `log "WARN: ..."` fallback. Insert before the final `log "Done."` lines.
 
-## Shell rc patching
+Helper used throughout: `log()` — thin wrapper around `printf '%s\n'`; `die()` — logs and exits 1.
 
-Go env vars are written to both `~/.bashrc` and `~/.zshrc` via `append_once`. Zsh plugin sourcing uses `env-init:` prefixed markers. The marker string is the first line of the block — changing it will cause duplicate entries on re-run.
+## Claude plugin install commands (section 13)
+
+```bash
+claude plugin install claude-code-setup@claude-plugins-official
+claude plugin install superpowers@claude-plugins-official
+claude plugin marketplace add jarrodwatts/claude-hud
+claude plugin install claude-hud
+claude plugin marketplace add JuliusBrussee/caveman
+claude plugin install caveman@caveman
+```
+
+On Linux, if `claude plugin install` fails with a cross-device error (`EXDEV`), prefix with `TMPDIR=~/.cache/tmp`:
+```bash
+mkdir -p ~/.cache/tmp && TMPDIR=~/.cache/tmp claude plugin install <plugin>
+```
