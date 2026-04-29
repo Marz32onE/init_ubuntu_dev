@@ -195,5 +195,44 @@ else
   log "WARN: RTK install failed; retry: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
 fi
 
+# --- 12b) RTK init — configure global hooks and Cursor agent integration ---
+RTK_BIN="${HOME}/.local/bin/rtk"
+if command -v rtk >/dev/null 2>&1 || [[ -x "${RTK_BIN}" ]]; then
+  export PATH="${HOME}/.local/bin:${PATH}"
+  rtk init -g 2>/dev/null || log "WARN: rtk init -g failed; retry after shell reload"
+  rtk init -g --agent cursor 2>/dev/null || log "WARN: rtk init -g --agent cursor failed"
+else
+  log "WARN: rtk binary not found; skipping rtk init (run manually after shell reload)"
+fi
+
+# --- 13) Claude Code plugins ---
+if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; then
+  export PATH="${HOME}/.local/bin:${PATH}"
+  claude plugin install claude-code-setup@claude-plugins-official 2>/dev/null || \
+    log "WARN: claude-code-setup plugin install failed"
+  claude plugin install superpowers@claude-plugins-official 2>/dev/null || \
+    log "WARN: superpowers plugin install failed"
+  claude plugin marketplace add jarrodwatts/claude-hud 2>/dev/null || true
+  claude plugin install claude-hud 2>/dev/null || \
+    log "WARN: claude-hud plugin install failed"
+  claude plugin marketplace add JuliusBrussee/caveman 2>/dev/null || true
+  claude plugin install caveman@caveman 2>/dev/null || \
+    log "WARN: caveman plugin install failed"
+else
+  log "WARN: claude CLI not found; skipping plugin installs"
+fi
+
+# --- 14) openspec (global npm) ---
+if command -v npm >/dev/null 2>&1; then
+  if ! npm list -g openspec >/dev/null 2>&1; then
+    $SUDO npm install -g openspec --prefix /usr/local || \
+      log "WARN: openspec npm install failed"
+  else
+    log "openspec already installed globally; skipping."
+  fi
+else
+  log "WARN: npm not found; skipping openspec install"
+fi
+
 log "Done. Open a new zsh session (or run: exec zsh) and run 'p10k configure' once to finish Powerlevel10k."
 log "If zsh is not your login shell yet: chsh -s \"$(command -v zsh)\""
