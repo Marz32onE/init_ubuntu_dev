@@ -199,8 +199,8 @@ fi
 RTK_BIN="${HOME}/.local/bin/rtk"
 if command -v rtk >/dev/null 2>&1 || [[ -x "${RTK_BIN}" ]]; then
   export PATH="${HOME}/.local/bin:${PATH}"
-  rtk init -g 2>/dev/null || log "WARN: rtk init -g failed; retry after shell reload"
-  rtk init -g --agent cursor 2>/dev/null || log "WARN: rtk init -g --agent cursor failed"
+  rtk init -g --auto-patch 2>/dev/null || log "WARN: rtk init -g failed; retry after shell reload"
+  rtk init -g --agent cursor --auto-patch 2>/dev/null || log "WARN: rtk init -g --agent cursor failed"
 else
   log "WARN: rtk binary not found; skipping rtk init (run manually after shell reload)"
 fi
