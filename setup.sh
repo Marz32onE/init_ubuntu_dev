@@ -213,9 +213,10 @@ else
 fi
 
 # --- 14) openspec (global npm) ---
+# Note: bare `openspec` on npm is an abandoned 2019 stub (no bin). Real package is @fission-ai/openspec.
 if command -v npm >/dev/null 2>&1; then
-  if ! npm list -g openspec >/dev/null 2>&1; then
-    $SUDO npm install -g openspec --prefix /usr/local || \
+  if ! npm list -g @fission-ai/openspec >/dev/null 2>&1; then
+    $SUDO npm install -g @fission-ai/openspec --prefix /usr/local || \
       log "WARN: openspec npm install failed"
   else
     log "openspec already installed globally; skipping."
