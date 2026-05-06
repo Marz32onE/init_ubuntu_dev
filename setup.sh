@@ -163,11 +163,61 @@ fi
 git config --global user.email "death0032@gmail.com"
 git config --global user.name "marz32one"
 
-# --- 9) golangci-lint (latest, official installer → /usr/local/bin) ---
-if curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | $SUDO sh -s -- -b /usr/local/bin; then
-  log "golangci-lint installed: $(/usr/local/bin/golangci-lint --version 2>/dev/null || true)"
+# --- 9) golangci-lint → /usr/local/bin (release tarball + checksums) ---
+# Do not use golangci's curl|install.sh path: upstream verify greps basename and matches both
+# `…linux-amd64.tar.gz` and `…linux-amd64.tar.gz.sbom.json`, so checksum verification always fails.
+if [[ -x /usr/bin/curl ]]; then CURL_BIN=/usr/bin/curl; else CURL_BIN=curl; fi
+GCI_TAG="$(
+  "${CURL_BIN}" -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: setup.sh' \
+    https://api.github.com/repos/golangci/golangci-lint/releases/latest |
+    sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+)"
+GCI_TMP="$(mktemp -d "${TMPDIR:-/tmp}/golangci-lint.XXXXXX")"
+GCI_OK=0
+if [[ -n "${GCI_TAG}" ]]; then
+  GCI_VER="${GCI_TAG#v}"
+  GCI_TB="golangci-lint-${GCI_VER}-linux-${GOARCH}.tar.gz"
+  GCI_BASE="https://github.com/golangci/golangci-lint/releases/download/${GCI_TAG}"
+  GCI_CHK="golangci-lint-${GCI_VER}-checksums.txt"
+  if "${CURL_BIN}" -fsSL "${GCI_BASE}/${GCI_CHK}" -o "${GCI_TMP}/${GCI_CHK}" &&
+    "${CURL_BIN}" -fsSL "${GCI_BASE}/${GCI_TB}" -o "${GCI_TMP}/${GCI_TB}"; then
+    GCI_WANT="$(awk -v fn="${GCI_TB}" '$2 == fn { print $1; exit }' "${GCI_TMP}/${GCI_CHK}")"
+    GCI_GOT="$(sha256sum "${GCI_TMP}/${GCI_TB}" | awk '{ print $1 }')"
+    if [[ -n "${GCI_WANT}" && "${GCI_WANT}" == "${GCI_GOT}" ]]; then
+      tar -C "${GCI_TMP}" -xzf "${GCI_TMP}/${GCI_TB}"
+      if $SUDO install -m 0755 "${GCI_TMP}/golangci-lint-${GCI_VER}-linux-${GOARCH}/golangci-lint" /usr/local/bin/golangci-lint; then
+        GCI_OK=1
+        log "golangci-lint installed: $(/usr/local/bin/golangci-lint --version 2>/dev/null || true)"
+      fi
+    else
+      log "WARN: golangci-lint tarball checksum mismatch or missing entry for ${GCI_TB}"
+    fi
+  else
+    log "WARN: golangci-lint download failed (${GCI_TAG})"
+  fi
 else
-  log "WARN: golangci-lint install failed; retry: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin"
+  log "WARN: could not resolve golangci-lint latest release tag from GitHub API"
+fi
+rm -rf "${GCI_TMP}"
+if [[ "${GCI_OK}" -ne 1 ]]; then
+  log "WARN: golangci-lint not installed; see https://golangci-lint.run/welcome/install/"
+fi
+
+# --- 10) gopls → ~/go/bin (Go language server; Claude Code gopls-lsp plugin) ---
+if command -v go >/dev/null 2>&1; then
+  export PATH="${HOME}/go/bin:${PATH}"
+  if ! command -v gopls >/dev/null 2>&1; then
+    log "Installing gopls (go install; first run often needs 1–5 minutes and a working GOPROXY)…"
+    if go install golang.org/x/tools/gopls@latest; then
+      log "gopls installed: $(gopls version 2>/dev/null | head -n1 || true)"
+    else
+      log "WARN: gopls install failed; retry: go install golang.org/x/tools/gopls@latest"
+    fi
+  else
+    log "gopls already present; skipping."
+  fi
+else
+  log "WARN: go not found; skipping gopls install"
 fi
 
 # Ensure ~/go/bin (GOPATH/bin) is on PATH in zsh so `go install`-ed tools are found
@@ -200,6 +250,8 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
   export PATH="${HOME}/.local/bin:${PATH}"
   claude plugin install claude-code-setup@claude-plugins-official 2>/dev/null || \
     log "WARN: claude-code-setup plugin install failed"
+  claude plugin install gopls-lsp@claude-plugins-official 2>/dev/null || \
+    log "WARN: gopls-lsp plugin install failed"
   claude plugin install superpowers@claude-plugins-official 2>/dev/null || \
     log "WARN: superpowers plugin install failed"
   claude plugin marketplace add jarrodwatts/claude-hud 2>/dev/null || true
