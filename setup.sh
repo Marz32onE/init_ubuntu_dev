@@ -248,11 +248,11 @@ fi
 # --- 13) Claude Code plugins ---
 if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; then
   export PATH="${HOME}/.local/bin:${PATH}"
-  claude plugin install claude-code-setup@claude-plugins-official 2>/dev/null || \
+  claude plugin install claude-code-setup 2>/dev/null || \
     log "WARN: claude-code-setup plugin install failed"
-  claude plugin install gopls-lsp@claude-plugins-official 2>/dev/null || \
+  claude plugin install gopls-lsp 2>/dev/null || \
     log "WARN: gopls-lsp plugin install failed"
-  claude plugin install superpowers@claude-plugins-official 2>/dev/null || \
+  claude plugin install superpowers 2>/dev/null || \
     log "WARN: superpowers plugin install failed"
   claude plugin marketplace add jarrodwatts/claude-hud 2>/dev/null || true
   claude plugin install claude-hud 2>/dev/null || \
@@ -260,6 +260,9 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
   claude plugin marketplace add JuliusBrussee/caveman 2>/dev/null || true
   claude plugin install caveman@caveman 2>/dev/null || \
     log "WARN: caveman plugin install failed"
+  claude plugin marketplace add forrestchang/andrej-karpathy-skills 2>/dev/null || true
+  claude plugin install andrej-karpathy-skills@karpathy-skills 2>/dev/null || \
+    log "WARN: andrej-karpathy-skills plugin install failed"
 else
   log "WARN: claude CLI not found; skipping plugin installs"
 fi
