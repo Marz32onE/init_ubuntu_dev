@@ -33,7 +33,7 @@ Re-running is safe — every step guards with `command -v` or file-existence che
 | `# --- 11)` | Clone `otel-traces-test` → `~/Documents/otel-traces-test` |
 | `# --- 12)` | RTK (Rust Token Killer) installer → `~/.local/bin` |
 | `# --- 12b)` | `rtk init -g` + `rtk init -g --agent cursor` |
-| `# --- 13)` | Claude Code plugins: claude-code-setup, superpowers, claude-hud, caveman |
+| `# --- 13)` | Claude Code plugins: claude-code-setup, gopls-lsp, superpowers, claude-hud, caveman |
 | `# --- 14)` | openspec global npm install |
 
 ## Key patterns
@@ -53,7 +53,10 @@ Helper used throughout: `log()` — thin wrapper around `printf '%s\n'`; `die()`
 ## Claude plugin install commands (section 13)
 
 ```bash
+claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin marketplace update claude-plugins-official
 claude plugin install claude-code-setup@claude-plugins-official
+claude plugin install gopls-lsp@claude-plugins-official
 claude plugin install superpowers@claude-plugins-official
 claude plugin marketplace add jarrodwatts/claude-hud
 claude plugin install claude-hud
