@@ -143,9 +143,9 @@ if ! $SUDO npm install -g typescript --prefix /usr/local; then
   log "WARN: global TypeScript (tsc) install failed; retry: sudo npm install -g typescript --prefix /usr/local"
 fi
 
-# --- 6) Cursor 3.1 (.deb) ---
+# --- 6) Cursor (.deb) ---
 CURSOR_DEB="/tmp/cursor-latest.deb"
-if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.4" -o "${CURSOR_DEB}"; then
+if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.6" -o "${CURSOR_DEB}"; then
   $SUDO apt-get install -y "${CURSOR_DEB}" 2>/dev/null || $SUDO dpkg -i "${CURSOR_DEB}" 2>/dev/null || \
     log "WARN: Cursor .deb install failed; install from https://cursor.com"
   $SUDO apt-get -f install -y 2>/dev/null || true
@@ -245,6 +245,21 @@ else
   log "WARN: RTK install failed; retry: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
 fi
 
+# --- 12b) typescript-language-server → /usr/local/bin (Claude Code typescript-lsp plugin) ---
+if command -v npm >/dev/null 2>&1; then
+  if ! command -v typescript-language-server >/dev/null 2>&1; then
+    if $SUDO npm install -g typescript-language-server --prefix /usr/local; then
+      log "typescript-language-server installed: $(typescript-language-server --version 2>/dev/null | head -n1 || true)"
+    else
+      log "WARN: typescript-language-server install failed; retry: sudo npm install -g typescript-language-server --prefix /usr/local"
+    fi
+  else
+    log "typescript-language-server already present; skipping."
+  fi
+else
+  log "WARN: npm not found; skipping typescript-language-server install"
+fi
+
 # --- 13) Claude Code plugins ---
 if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; then
   export PATH="${HOME}/.local/bin:${PATH}"
@@ -252,6 +267,10 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
   claude plugin marketplace update claude-plugins-official 2>/dev/null || true
   claude plugin install claude-code-setup@claude-plugins-official 2>/dev/null || \
     log "WARN: claude-code-setup plugin install failed"
+  claude plugin install security-guidance@claude-plugins-official 2>/dev/null || \
+    log "WARN: security-guidance plugin install failed"
+  claude plugin install typescript-lsp@claude-plugins-official 2>/dev/null || \
+    log "WARN: typescript-lsp plugin install failed"
   claude plugin install gopls-lsp@claude-plugins-official 2>/dev/null || \
     log "WARN: gopls-lsp plugin install failed"
   claude plugin install superpowers@claude-plugins-official 2>/dev/null || \
