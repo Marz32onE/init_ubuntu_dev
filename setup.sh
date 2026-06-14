@@ -269,6 +269,13 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
     log "WARN: claude-code-setup plugin install failed"
   claude plugin install security-guidance@claude-plugins-official 2>/dev/null || \
     log "WARN: security-guidance plugin install failed"
+  claude plugin install frontend-design@claude-plugins-official 2>/dev/null || \
+    log "WARN: frontend-design plugin install failed"
+  claude plugin install code-review@claude-plugins-official 2>/dev/null || \
+    log "WARN: code-review plugin install failed"
+  claude plugin install code-simplifier@claude-plugins-official 2>/dev/null || \
+    log "WARN: code-simplifier plugin install failed"
+  claude plugin install rust-lsp@claude-plugins-official 2>/dev/null || \
   claude plugin install typescript-lsp@claude-plugins-official 2>/dev/null || \
     log "WARN: typescript-lsp plugin install failed"
   claude plugin install gopls-lsp@claude-plugins-official 2>/dev/null || \
