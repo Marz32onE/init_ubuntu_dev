@@ -145,7 +145,7 @@ fi
 
 # --- 6) Cursor (.deb) ---
 CURSOR_DEB="/tmp/cursor-latest.deb"
-if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.9" -o "${CURSOR_DEB}"; then
+if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.11" -o "${CURSOR_DEB}"; then
   $SUDO apt-get install -y "${CURSOR_DEB}" 2>/dev/null || $SUDO dpkg -i "${CURSOR_DEB}" 2>/dev/null || \
     log "WARN: Cursor .deb install failed; install from https://cursor.com"
   $SUDO apt-get -f install -y 2>/dev/null || true
@@ -276,6 +276,7 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
   claude plugin install code-simplifier@claude-plugins-official 2>/dev/null || \
     log "WARN: code-simplifier plugin install failed"
   claude plugin install rust-lsp@claude-plugins-official 2>/dev/null || \
+    log "WARN: rust-lsp plugin install failed"
   claude plugin install typescript-lsp@claude-plugins-official 2>/dev/null || \
     log "WARN: typescript-lsp plugin install failed"
   claude plugin install gopls-lsp@claude-plugins-official 2>/dev/null || \
