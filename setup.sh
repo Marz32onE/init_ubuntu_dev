@@ -281,6 +281,8 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
     log "WARN: typescript-lsp plugin install failed"
   claude plugin install gopls-lsp@claude-plugins-official 2>/dev/null || \
     log "WARN: gopls-lsp plugin install failed"
+  claude plugin install pyright-lsp@claude-plugins-official 2>/dev/null || \
+    log "WARN: pyright-lsp plugin install failed"
   claude plugin install superpowers@claude-plugins-official 2>/dev/null || \
     log "WARN: superpowers plugin install failed"
   claude plugin marketplace add jarrodwatts/claude-hud 2>/dev/null || true
