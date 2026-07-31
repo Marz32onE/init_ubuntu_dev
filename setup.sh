@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap dev environment: zsh + Powerlevel10k, Go, jq, TypeScript (tsc), Cursor 3.1, Claude Code CLI, RTK, git, clone repo.
+# Bootstrap dev environment: zsh + Powerlevel10k, Go, jq, TypeScript (tsc), Cursor, Claude Code CLI, RTK, git, clone repo.
 # `sh init.sh` uses dash on Debian/Ubuntu; re-exec with bash (this script needs pipefail and [[ ]]).
 if [ -z "${BASH_VERSION:-}" ]; then
   exec /usr/bin/env bash "$0" "$@"
@@ -145,7 +145,7 @@ fi
 
 # --- 6) Cursor (.deb) ---
 CURSOR_DEB="/tmp/cursor-latest.deb"
-if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.11" -o "${CURSOR_DEB}"; then
+if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.13" -o "${CURSOR_DEB}"; then
   $SUDO apt-get install -y "${CURSOR_DEB}" 2>/dev/null || $SUDO dpkg -i "${CURSOR_DEB}" 2>/dev/null || \
     log "WARN: Cursor .deb install failed; install from https://cursor.com"
   $SUDO apt-get -f install -y 2>/dev/null || true
