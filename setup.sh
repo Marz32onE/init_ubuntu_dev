@@ -145,7 +145,7 @@ fi
 
 # --- 6) Cursor (.deb) ---
 CURSOR_DEB="/tmp/cursor-latest.deb"
-if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.13" -o "${CURSOR_DEB}"; then
+if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.14" -o "${CURSOR_DEB}"; then
   $SUDO apt-get install -y "${CURSOR_DEB}" 2>/dev/null || $SUDO dpkg -i "${CURSOR_DEB}" 2>/dev/null || \
     log "WARN: Cursor .deb install failed; install from https://cursor.com"
   $SUDO apt-get -f install -y 2>/dev/null || true
@@ -294,6 +294,8 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
   claude plugin marketplace add forrestchang/andrej-karpathy-skills 2>/dev/null || true
   claude plugin install andrej-karpathy-skills@karpathy-skills 2>/dev/null || \
     log "WARN: andrej-karpathy-skills plugin install failed"
+  claude plugins install mattpocock-skills 2>/dev/null || \
+    log "WARN: mattpocock-skills plugin install failed"
 else
   log "WARN: claude CLI not found; skipping plugin installs"
 fi
