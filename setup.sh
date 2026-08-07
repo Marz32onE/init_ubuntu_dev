@@ -225,12 +225,12 @@ if [[ -f "${ZSHRC}" ]] && ! grep -q 'env-init: go bin' "${ZSHRC}" 2>/dev/null; t
   printf '\n# env-init: go bin (GOPATH)\nexport PATH="${HOME}/go/bin:${PATH}"\n' >> "${ZSHRC}"
 fi
 
-# --- 11) Clone otel-traces-test → ~/Document ---
+# --- 11) Clone instrumentation-demo → ~/Document -`-`-
 DOC_DIR="${HOME}/Documents"
 mkdir -p "${DOC_DIR}"
-REPO_DIR="${DOC_DIR}/otel-traces-test"
+REPO_DIR="${DOC_DIR}/instrumentation-demo"
 if [[ ! -d "${REPO_DIR}/.git" ]]; then
-  git clone https://github.com/Marz32onE/otel-traces-test.git "${REPO_DIR}"
+  git clone https://github.com/akira-core/instrumentation-demo.git "${REPO_DIR}"
   if ! git -C "${REPO_DIR}" submodule update --init --recursive; then
     log "WARN: git submodules failed; run: git -C ${REPO_DIR} submodule update --init --recursive"
   fi
