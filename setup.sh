@@ -283,8 +283,6 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
     log "WARN: gopls-lsp plugin install failed"
   claude plugin install pyright-lsp@claude-plugins-official 2>/dev/null || \
     log "WARN: pyright-lsp plugin install failed"
-  claude plugin install superpowers@claude-plugins-official 2>/dev/null || \
-    log "WARN: superpowers plugin install failed"
   claude plugin marketplace add jarrodwatts/claude-hud 2>/dev/null || true
   claude plugin install claude-hud 2>/dev/null || \
     log "WARN: claude-hud plugin install failed"
@@ -296,6 +294,9 @@ if command -v claude >/dev/null 2>&1 || [[ -x "${HOME}/.local/bin/claude" ]]; th
     log "WARN: andrej-karpathy-skills plugin install failed"
   claude plugins install mattpocock-skills 2>/dev/null || \
     log "WARN: mattpocock-skills plugin install failed"
+  claude plugin marketplace add JetBrains/go-modern-guidelines 2>/dev/null || true
+  claude plugin install modern-go-guidelines@goland-claude-marketplace- 2>/dev/null || \
+    log "WARN: modern-go-guidelines plugin install failed"
 else
   log "WARN: claude CLI not found; skipping plugin installs"
 fi
