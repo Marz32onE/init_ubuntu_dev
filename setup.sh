@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap dev environment: zsh + Powerlevel10k, Go, jq, TypeScript (tsc), Cursor, Claude Code CLI, RTK, git, clone repo.
+# Bootstrap dev environment: zsh + Powerlevel10k, Go, jq, TypeScript (tsc), Claude Code CLI, RTK, git.
 # `sh init.sh` uses dash on Debian/Ubuntu; re-exec with bash (this script needs pipefail and [[ ]]).
 if [ -z "${BASH_VERSION:-}" ]; then
   exec /usr/bin/env bash "$0" "$@"
@@ -23,16 +23,7 @@ map_arch() {
   esac
 }
 
-map_cursor_arch() {
-  case "$(uname -m)" in
-    x86_64)  echo "x64" ;;
-    aarch64|arm64) echo "arm64" ;;
-    *) die "unsupported architecture: $(uname -m)" ;;
-  esac
-}
-
 GOARCH="$(map_arch)"
-CURSOR_ARCH="$(map_cursor_arch)"
 
 # --- 1) Base packages (Debian/Ubuntu) ---
 if command -v apt-get >/dev/null 2>&1; then
@@ -131,28 +122,27 @@ else
 fi
 
 # --- 5) Node.js (for tsc) + TypeScript global → /usr/local/bin ---
-if ! command -v node >/dev/null 2>&1; then
+# Require Node >= 22.18 (claude-hud needs it); install/upgrade to Node 24 via nodesource otherwise.
+node_ok() {
+  command -v node >/dev/null 2>&1 || return 1
+  local v major minor
+  v="$(node -v 2>/dev/null)"; v="${v#v}"
+  major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%.*}"
+  [[ "${major}" =~ ^[0-9]+$ && "${minor}" =~ ^[0-9]+$ ]] || return 1
+  (( major > 22 || (major == 22 && minor >= 18) ))
+}
+if ! node_ok; then
+  log "Node missing or older than 22.18 ($(node -v 2>/dev/null || echo none)); installing Node 24 via nodesource"
   if [[ -n "${SUDO}" ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_24.x | $SUDO -E bash -
   else
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   fi
-  $SUDO apt-get install -y nodejs
+  $SUDO apt-get install -y nodejs || log "WARN: Node 24 install failed; install from https://nodejs.org"
 fi
 if ! $SUDO npm install -g typescript --prefix /usr/local; then
   log "WARN: global TypeScript (tsc) install failed; retry: sudo npm install -g typescript --prefix /usr/local"
 fi
-
-# --- 6) Cursor (.deb) ---
-CURSOR_DEB="/tmp/cursor-latest.deb"
-if curl -fsSL "https://api2.cursor.sh/updates/download/golden/linux-${CURSOR_ARCH}-deb/cursor/3.24" -o "${CURSOR_DEB}"; then
-  $SUDO apt-get install -y "${CURSOR_DEB}" 2>/dev/null || $SUDO dpkg -i "${CURSOR_DEB}" 2>/dev/null || \
-    log "WARN: Cursor .deb install failed; install from https://cursor.com"
-  $SUDO apt-get -f install -y 2>/dev/null || true
-else
-  log "WARN: Cursor .deb download failed; install from https://cursor.com"
-fi
-rm -f "${CURSOR_DEB}"
 
 # --- 7) Claude Code CLI (native installer) ---
 if ! curl -fsSL https://claude.ai/install.sh | bash; then
@@ -223,19 +213,6 @@ fi
 # Ensure ~/go/bin (GOPATH/bin) is on PATH in zsh so `go install`-ed tools are found
 if [[ -f "${ZSHRC}" ]] && ! grep -q 'env-init: go bin' "${ZSHRC}" 2>/dev/null; then
   printf '\n# env-init: go bin (GOPATH)\nexport PATH="${HOME}/go/bin:${PATH}"\n' >> "${ZSHRC}"
-fi
-
-# --- 11) Clone instrumentation-demo → ~/Document -`-`-
-DOC_DIR="${HOME}/Documents"
-mkdir -p "${DOC_DIR}"
-REPO_DIR="${DOC_DIR}/instrumentation-demo"
-if [[ ! -d "${REPO_DIR}/.git" ]]; then
-  git clone https://github.com/akira-core/instrumentation-demo.git "${REPO_DIR}"
-  if ! git -C "${REPO_DIR}" submodule update --init --recursive; then
-    log "WARN: git submodules failed; run: git -C ${REPO_DIR} submodule update --init --recursive"
-  fi
-else
-  log "Repo already exists at ${REPO_DIR}; skipping clone."
 fi
 
 # --- 12) RTK (Rust Token Killer) → ~/.local/bin — https://github.com/rtk-ai/rtk#quick-install-linuxmacos
@@ -319,4 +296,3 @@ log "If zsh is not your login shell yet: chsh -s \"$(command -v zsh)\""
 log ""
 log "RTK init is interactive — run in a terminal after ~/.local/bin is on PATH (e.g. new zsh):"
 log "  rtk init -g"
-log "  rtk init -g --agent cursor"
